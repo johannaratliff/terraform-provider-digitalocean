@@ -71,6 +71,7 @@ func ResourceDigitalOceanVPCNATGateway() *schema.Resource {
 						"subnet_uuid": {
 							Type:        schema.TypeString,
 							Optional:    true,
+							Computed:    true,
 							Description: "ID of the ingress subnet in the VPC",
 							ForceNew:    true,
 						},
