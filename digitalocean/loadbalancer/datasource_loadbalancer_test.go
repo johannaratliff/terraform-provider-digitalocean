@@ -13,6 +13,51 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+func TestAccDataSourceDigitalOceanLoadBalancer_WithVPC(t *testing.T) {
+	var loadbalancer godo.LoadBalancer
+	lbName := acceptance.RandomTestName()
+	vpcName := acceptance.RandomTestName("vpc")
+	var accTestSubnetUUID string
+	resourceConfig := testAccCheckDigitalOceanLoadbalancerConfig_WithVPC(lbName, vpcName)
+	dataSourceConfig := `
+data "digitalocean_loadbalancer" "foobar" {
+  name = digitalocean_loadbalancer.foobar.name
+}`
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanLoadbalancerDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckDigitalOceanLoadbalancerConfig_VPCOnly(vpcName),
+				Check:  testAccCreateVPCSubnet("digitalocean_vpc.foobar", &accTestSubnetUUID, t),
+			},
+			{
+				PreConfig: func() {
+					t.Setenv("TF_VAR_acc_subnet_uuid", accTestSubnetUUID)
+				},
+				Config: resourceConfig,
+			},
+			{
+				PreConfig: func() {
+					t.Setenv("TF_VAR_acc_subnet_uuid", accTestSubnetUUID)
+				},
+				Config: resourceConfig + dataSourceConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataSourceDigitalOceanLoadBalancerExists("data.digitalocean_loadbalancer.foobar", &loadbalancer),
+					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "name", lbName),
+					resource.TestCheckResourceAttrSet(
+						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
+					testAccCheckLoadBalancerSubnetUUID("data.digitalocean_loadbalancer.foobar", accTestSubnetUUID),
+					testAccCheckSubnetUUIDDiffersFromVPCUUID("data.digitalocean_loadbalancer.foobar", "digitalocean_vpc.foobar", "subnet_uuid"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDataSourceDigitalOceanLoadBalancer_BasicByName(t *testing.T) {
 	var loadbalancer godo.LoadBalancer
 	testName := acceptance.RandomTestName()
@@ -67,6 +112,8 @@ data "digitalocean_loadbalancer" "foobar" {
 						"data.digitalocean_loadbalancer.foobar", "urn", expectedURNRegEx),
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
+					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(
@@ -138,6 +185,8 @@ data "digitalocean_loadbalancer" "foobar" {
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
 					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
+					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_backend_keepalive", "false"),
@@ -204,6 +253,8 @@ data "digitalocean_loadbalancer" "foobar" {
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
 					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
+					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_backend_keepalive", "false"),
@@ -268,6 +319,8 @@ data "digitalocean_loadbalancer" "foobar" {
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
 					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
+					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_backend_keepalive", "false"),
@@ -330,6 +383,8 @@ data "digitalocean_loadbalancer" "foobar" {
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
 					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
+					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_backend_keepalive", "false"),
@@ -391,6 +446,8 @@ data "digitalocean_loadbalancer" "foobar" {
 						"data.digitalocean_loadbalancer.foobar", "urn", expectedURNRegEx),
 					resource.TestCheckResourceAttrSet(
 						"data.digitalocean_loadbalancer.foobar", "vpc_uuid"),
+					resource.TestCheckResourceAttr(
+						"data.digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
 					resource.TestCheckResourceAttr(
 						"data.digitalocean_loadbalancer.foobar", "enable_proxy_protocol", "false"),
 					resource.TestCheckResourceAttr(

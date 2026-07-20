@@ -61,6 +61,8 @@ func TestAccDigitalOceanLoadbalancer_Basic(t *testing.T) {
 						"digitalocean_loadbalancer.foobar", "droplet_ids.#", "1"),
 					resource.TestCheckResourceAttrSet(
 						"digitalocean_loadbalancer.foobar", "vpc_uuid"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_loadbalancer.foobar", "subnet_uuid", ""),
 					resource.TestMatchResourceAttr(
 						"digitalocean_loadbalancer.foobar", "urn", expectedURNRegEx),
 					resource.TestCheckResourceAttr(
@@ -703,6 +705,8 @@ func TestAccDigitalOceanLoadbalancer_multipleRules(t *testing.T) {
 func TestAccDigitalOceanLoadbalancer_WithVPC(t *testing.T) {
 	var loadbalancer godo.LoadBalancer
 	lbName := acceptance.RandomTestName()
+	vpcName := acceptance.RandomTestName("vpc")
+	var accTestSubnetUUID string
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
@@ -710,13 +714,22 @@ func TestAccDigitalOceanLoadbalancer_WithVPC(t *testing.T) {
 		CheckDestroy:      testAccCheckDigitalOceanLoadbalancerDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccCheckDigitalOceanLoadbalancerConfig_WithVPC(lbName),
+				Config: testAccCheckDigitalOceanLoadbalancerConfig_VPCOnly(vpcName),
+				Check:  testAccCreateVPCSubnet("digitalocean_vpc.foobar", &accTestSubnetUUID, t),
+			},
+			{
+				PreConfig: func() {
+					t.Setenv("TF_VAR_acc_subnet_uuid", accTestSubnetUUID)
+				},
+				Config: testAccCheckDigitalOceanLoadbalancerConfig_WithVPC(lbName, vpcName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckDigitalOceanLoadbalancerExists("digitalocean_loadbalancer.foobar", &loadbalancer),
 					resource.TestCheckResourceAttr(
 						"digitalocean_loadbalancer.foobar", "name", lbName),
 					resource.TestCheckResourceAttrSet(
 						"digitalocean_loadbalancer.foobar", "vpc_uuid"),
+					testAccCheckLoadBalancerSubnetUUID("digitalocean_loadbalancer.foobar", accTestSubnetUUID),
+					testAccCheckSubnetUUIDDiffersFromVPCUUID("digitalocean_loadbalancer.foobar", "digitalocean_vpc.foobar", "subnet_uuid"),
 					resource.TestCheckResourceAttr(
 						"digitalocean_loadbalancer.foobar", "droplet_ids.#", "1"),
 				),
@@ -1280,11 +1293,25 @@ resource "digitalocean_loadbalancer" "foobar" {
 }`, rName)
 }
 
-func testAccCheckDigitalOceanLoadbalancerConfig_WithVPC(name string) string {
+func testAccCheckDigitalOceanLoadbalancerConfig_VPCOnly(vpcName string) string {
 	return fmt.Sprintf(`
 resource "digitalocean_vpc" "foobar" {
-  name   = "%s"
-  region = "nyc3"
+  name     = "%s"
+  region   = "nyc3"
+  ip_range = "10.10.0.0/16"
+}`, vpcName)
+}
+
+func testAccCheckDigitalOceanLoadbalancerConfig_WithVPC(lbName, vpcName string) string {
+	return fmt.Sprintf(`
+variable "acc_subnet_uuid" {
+  type = string
+}
+
+resource "digitalocean_vpc" "foobar" {
+  name     = "%s"
+  region   = "nyc3"
+  ip_range = "10.10.0.0/16"
 }
 
 resource "digitalocean_droplet" "foobar" {
@@ -1309,8 +1336,9 @@ resource "digitalocean_loadbalancer" "foobar" {
   }
 
   vpc_uuid    = digitalocean_vpc.foobar.id
+  subnet_uuid = var.acc_subnet_uuid
   droplet_ids = [digitalocean_droplet.foobar.id]
-}`, acceptance.RandomTestName(), acceptance.RandomTestName(), name)
+}`, vpcName, acceptance.RandomTestName(), lbName)
 }
 
 func testAccCheckDigitalOceanLoadbalancerConfig_Firewall(name string) string {
